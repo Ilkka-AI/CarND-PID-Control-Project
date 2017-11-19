@@ -1,6 +1,26 @@
 # CarND-Controls-PID
 Self-Driving Car Engineer Nanodegree Program
 
+
+The purpose of this project was to implement a PID controller to control the steering and throttle of a car driving in a simulator. The implementation was quite short and straightforward. The proportional (P) component brings the car back to center, with steering the stronger the further the car is from the center. Alone it causes substantial oscillation that increases quickly and drives the car off the track. The difference (D) components is proportional to the change in consecutive values of distance from the center and it dampens the oscillation, as it decreases steering the higher changes in position are. The integral (I) component removes systematic bias in steering.
+
+
+With low throttle, it was relatively easy to find parameter values that work and allow the car to drive around the lake track staying on the track. The car oscillates constantly and I could not get rid of that, although including the I and D components was sufficient to keep the car on track. With higher throttle (higher velocities), staying on the track was more difficult. 
+
+
+I also implemented the Twiddle parameter optimization to tune the PID hyperparameters. I implemented an automatic restart of the simulator after 2200 frames or if the car gets stuck. The user can leave the car racing and optimizing its own parameters with the twiddle trial and error method, where successful parameter change proposals that decrease total error are kept. 
+
+
+I implemented another class Twiddle.cpp and made a change in the CMakelist.txt. I hope this works in the grader...  
+
+
+My observations were: 1) Twiddle has to have relatively good initial estimates for the parameter values and their scales. With completely arbitrary values and scales I did not observe much convergence, at least with limited amount of iterations (as each lap takes several minutes). With good initial estimates, the algorithm is able to improve the parameters. On a track with obstacles to get stuck on, this seems to a be multi-modal parameter optimization problem with lots of local optima to get stuck to. The optimal parameters depend on the throttle value or throttle model (if controlled by another PID). An example of parameter values that I got by Twiddle and which work for constant throttle=0.5, are Kp=0.5, Ki=0.01, Kd=10. 
+
+
+I tried manually a few configurations to control the speed with another PID control, but did not reach any conclusion beyond the obvious that racing is easy with low velocities and difficult with high velocities. I did not try Twiddle here.
+
+
+
 ---
 
 ## Dependencies
