@@ -2,8 +2,9 @@
 #include <iostream>
 #include "json.hpp"
 #include "PID.h"
+#include "Twiddle.h"
 #include <math.h>
-
+using namespace std;
 // for convenience
 using json = nlohmann::json;
 
@@ -31,10 +32,14 @@ std::string hasData(std::string s) {
 int main()
 {
   uWS::Hub h;
+  
 
-  PID pid;
-  // TODO: Initialize the pid variable.
+ 
+ PID pid;
+  
+  // Initialize the pid variable.
 
+ 	pid.Init(0.3,0.01,10);
   h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -51,22 +56,76 @@ int main()
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
           double steer_value;
+	//just get rid of the annoying warning when compiling  
+	double angle_use=angle;
+	angle_use+=1;
+	 
+	  
           /*
-          * TODO: Calcuate steering value here, remember the steering value is
+          * Calcuate steering value here, the steering value is
           * [-1, 1].
           * NOTE: Feel free to play around with the throttle and speed. Maybe use
-          * another PID controller to control the speed!
-          */
-          
-          // DEBUG
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+          * another PID controller to control the speed!          
+*/
+	  // Update the current, diff and integral errors
+	  pid.UpdateError(cte); 	
+    	  //cte_diff=(cte-pid.cte_prev);
+	  //steer_value=-cte*0.03-cte_diff*0.005;//-pid.cte_integral*0.03;
+	  // From Forums, this works Kp = 0.3, Ki = 0.0005, and Kd = 20.
+	  //steer_value=-cte*0.3-cte_diff*30-pid.cte_integral*0.0005;
 
+	  // Calculate steer value
+          steer_value=-cte*pid.Kp-pid.d_error*pid.Kd-pid.cte_integral*pid.Ki;
+
+	 // For the submission use constant throttle
+	 double throttle=0.5;
+	 // Some other controls that I tried
+	 //double throttle=0.4-(speed-30)*0.005;//-abs(cte_diff)*0.01;
+         //cout << "cte " << cte <<" cte_prev "<< pid.cte_prev <<" cte diff " << cte_diff<< " speed " <<speed << endl;  
+	 //double throttle=0.3-speedabs(cte)*0.05;//-abs(cte_diff)*0.01;
+	 //double throttle=1.3-(abs(angle))*0.02-abs(cte_diff)*0.01-abs(cte)*0.2;	
+
+	 // Update total error		
+	 pid.TotalError(); 
+          
+	 // Send steering commands to the simulator
           json msgJson;
           msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = 0.3;
+          msgJson["throttle"] = throttle;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          std::cout << msg << std::endl;
+          
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+	// Update iterations
+   	pid.twiddle1.iterations+=1;	
+
+	int n_frames=2200;
+	// If the car gets stuck, stop driving and restart immediately to make Twiddling a bit faster.
+	// Then add the total error 4.5 squared for the remaining frames. 4.5 is the distance from center to the lane edge.
+	// Therefore a car driving out in the middle has smaller total error than one driving out early. 
+	if(pid.twiddle1.iterations>2 && speed<0.5){
+	pid.total_error_sum+=(n_frames-pid.twiddle1.iterations)*4.5*4.5;
+	pid.twiddle1.iterations=(n_frames+1);
+}
+	// After approx. one lap, check total error and use Twiddle to update parameters 
+	if(pid.twiddle1.iterations>n_frames){
+ 	
+	cout << "total error " << pid.total_error_sum/pid.twiddle1.iterations << " Best error "<< pid.twiddle1.best_total_error_per_frame << 		endl;
+	cout <<"That error was obtained with" <<endl;
+	cout << "pid.Kp " << pid.Kp <<" pid.Ki "<< pid.Ki <<" pid.Kd " << pid.Kd << " speed " <<speed << endl;  	
+	// This is the reset message to reset the simulator
+	std::string reset_msg = "42[\"reset\",{}]";
+		
+	ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
+	// Update parameters by Twiddle. The error is in units   error/frame	
+	pid.twiddle1.TwiddleUpdate(pid.total_error_sum/pid.twiddle1.iterations);
+	// Give updated parameters to the PID
+	pid.UpdateCoefs();
+
+	cout <<"Now trying" <<endl;
+	cout << "pid.Kp " << pid.Kp <<" pid.Ki "<< pid.Ki <<" pid.Kd " << pid.Kd << " speed " <<speed << endl;  		
+
+}
+////////////////////////////////////////////////
         }
       } else {
         // Manual driving
